@@ -1,6 +1,6 @@
 // Please don't change the pre-written code
 // Import the necessary modules here
-
+import crypto from "crypto";
 import { sendPasswordResetEmail } from "../../../utils/emails/passwordReset.js";
 import { sendWelcomeEmail } from "../../../utils/emails/welcomeMail.js";
 import { ErrorHandler } from "../../../utils/errorHandler.js";
@@ -14,7 +14,8 @@ import {
   updateUserProfileRepo,
   updateUserRoleAndProfileRepo,
 } from "../models/user.repository.js";
-import crypto from "crypto";
+import { error } from "console";
+
 
 export const createNewUser = async (req, res, next) => {
   const { name, email, password } = req.body;
@@ -26,7 +27,13 @@ export const createNewUser = async (req, res, next) => {
     await sendWelcomeEmail(newUser);
   } catch (err) {
     //  handle error for duplicate email
-    return next(new ErrorHandler(400, err));
+    if (err.code == 11000 && err.keyPattern && err.keyPattern.email) {
+      res
+        .status(400)
+        .send({ success: false, error: "email already registered" });
+    } else {
+      return next(new ErrorHandler(400, err));
+    }
   }
 };
 
@@ -44,7 +51,7 @@ export const userLogin = async (req, res, next) => {
     }
     const passwordMatch = await user.comparePassword(password);
     if (!passwordMatch) {
-      return next(new ErrorHandler(401, "Invalid email or passswor!"));
+      return next(new ErrorHandler(401, "Invalid email or passsword!"));
     }
     await sendToken(user, res, 200);
   } catch (error) {
@@ -64,10 +71,59 @@ export const logoutUser = async (req, res, next) => {
 
 export const forgetPassword = async (req, res, next) => {
   // Implement feature for forget password
+  const { email } = req.body;
+  const user = await findUserRepo({ email: email });
+  if (!user) {
+    return next(
+      new ErrorHandler(
+        404,
+        "User Not found. Please enter the correct email address"
+      )
+    );
+  }
+  const resetToken = await user.getResetPasswordToken();
+  await sendPasswordResetEmail(user, resetToken);
+  return res.status(200).json({
+    status: "success",
+    message: `Reset password mail has been sent to ${user.email}`,
+  });
 };
 
 export const resetUserPassword = async (req, res, next) => {
   // Implement feature for reset password
+  try {
+    const resetToken = req.params.token;
+    const { password, confirmPassword } = req.body;
+    if (!resetToken) {
+      return next(
+        new ErrorHandler(400, "Please provide the token to reset the password")
+      );
+    }
+    if (!password || !confirmPassword) {
+      return next(new ErrorHandler(400, "Please provide the password"));
+    }
+    if (password !== confirmPassword) {
+      return next(new ErrorHandler(400, "The password is not matching"));
+    }
+    const hashToken = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+    const user = await findUserForPasswordResetRepo(hashToken);
+    if (!user) {
+      return next(new ErrorHandler(400, "Invalid or expired reset token"));
+    }
+    user.password = password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+    await user.save();
+    res.status(200).json({
+      success: true,
+      message: "Password reset successful",
+    });
+  } catch (error) {
+    return next(new ErrorHandler(500, "Internal server error"));
+  }
 };
 
 export const getUserDetails = async (req, res, next) => {
@@ -162,4 +218,30 @@ export const deleteUser = async (req, res, next) => {
 
 export const updateUserProfileAndRole = async (req, res, next) => {
   // Write your code here for updating the roles of other users by admin
+  try {
+    //const { id } = req.params.id;
+    const { name, email, role } = req.body;
+
+    const user = await findUserRepo({ _id: req.params.id }, true);
+    if (!user) {
+      return next(
+        new ErrorHandler(404, "User not found. Please enter a valid user ID")
+      );
+    }
+    const userUpdate = await updateUserRoleAndProfileRepo(
+      { _id: req.params.id },
+      req.body
+    );
+    if (!userUpdate) {
+      return next(new ErrorHandler(500, error));
+    } else {
+      return res.status(200).json({
+        status: "Success",
+        result: "Updated user details",
+        response: userUpdate,
+      });
+    }
+  } catch (error) {
+    return next(new ErrorHandler(500, error));
+  }
 };

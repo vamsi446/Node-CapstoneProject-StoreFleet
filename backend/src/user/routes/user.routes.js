@@ -35,7 +35,9 @@ router.route("/details").get(auth, getUserDetails);
 router.route("/logout").get(auth, logoutUser);
 
 // Admin GET Routes
-router.route("/admin/allusers").get(auth, authByUserRole("admin"), getAllUsers);
+router
+  .route("/admin/allusers")
+  .get(auth, authByUserRole("admin", "user"), getAllUsers);
 router
   .route("/admin/details/:id")
   .get(auth, authByUserRole("admin"), getUserDetailsForAdmin);
@@ -48,5 +50,7 @@ router
 // Admin PUT Routes
 // Implement route for updating role of other users
 // Write your code here
-
+router
+  .route("/admin/update/:id")
+  .put(auth, authByUserRole("admin"), updateUserProfileAndRole);
 export default router;

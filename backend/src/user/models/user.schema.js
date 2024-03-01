@@ -14,7 +14,7 @@ const userSchema = new mongoose.Schema({
   email: {
     type: String,
     required: [true, "user email is requires"],
-    unique: true,
+    unique: [true,"email already registered"],
     validate: [validator.isEmail, "pls enter a valid email"],
   },
   password: {
@@ -39,12 +39,25 @@ const userSchema = new mongoose.Schema({
     default: "user",
     enum: ["user", "admin"],
   },
-  resetPasswordToken: String,
-  resetPasswordExpire: Date,
+  resetPasswordToken: {
+    type: String,
+  },
+  resetPasswordExpire: {
+    type: Date,
+  },
 });
 
 userSchema.pre("save", async function (next) {
   //  hash user password before saving using bcrypt
+  const user = this;
+  try{
+    const hashedPassword = await bcrypt.hash(user.password, 12);
+    user.password = hashedPassword;
+    next();
+  }
+  catch(err){
+    console.log(err);
+  }
 });
 
 // JWT Token

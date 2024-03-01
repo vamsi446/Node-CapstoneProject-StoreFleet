@@ -10,6 +10,7 @@ import {
   getProductDetailsRepo,
   getTotalCountsOfProduct,
   updateProductRepo,
+  findProductByFilter,
 } from "../model/product.repository.js";
 import ProductModel from "../model/product.schema.js";
 
@@ -22,7 +23,7 @@ export const addNewProduct = async (req, res, next) => {
     if (product) {
       res.status(201).json({ success: true, product });
     } else {
-      return next(new ErrorHandler(400, "some error occured!"));
+      return next(new ErrorHandler(400, "some error occurred!"));
     }
   } catch (error) {
     return next(new ErrorHandler(400, error));
@@ -31,6 +32,36 @@ export const addNewProduct = async (req, res, next) => {
 
 export const getAllProducts = async (req, res, next) => {
   // Implement the functionality for search, filter and pagination this function.
+  const { keyword, category, maxPrice, minPrice } = req.query;
+  const page = req.query.page || 1;
+  const pageLimit = 3;
+
+  // filter Query
+  const filterQuery = {};
+  if (category) {
+    filterQuery.category = category;
+  }
+  if (minPrice && maxPrice) {
+    filterQuery.price = { $gte: minPrice, $lte: maxPrice };
+  } else if (minPrice) {
+    filterQuery.price = { $gte: minPrice };
+  } else if (maxPrice) {
+    filterQuery.price = { $lte: maxPrice };
+  }
+  // search query
+  let matchedProducts;
+  if (keyword) {
+    matchedProducts = await findProductByFilter(keyword, page, pageLimit);
+  } else {
+    matchedProducts = await findProductByFilter(filterQuery, page, pageLimit);
+  }
+
+  if (!matchedProducts) {
+    return res
+      .status(404)
+      .json({ status: "failed", response: "No products found" });
+  }
+  return res.status(200).json({ status: "success", response: matchedProducts });
 };
 
 export const updateProduct = async (req, res, next) => {
@@ -130,6 +161,7 @@ export const deleteReview = async (req, res, next) => {
   // Insert the essential code into this controller wherever necessary to resolve issues related to removing reviews and updating product ratings.
   try {
     const { productId, reviewId } = req.query;
+    const userID = req.user._id.toString();
     if (!productId || !reviewId) {
       return next(
         new ErrorHandler(
@@ -145,7 +177,7 @@ export const deleteReview = async (req, res, next) => {
     const reviews = product.reviews;
 
     const isReviewExistIndex = reviews.findIndex((rev) => {
-      return rev._id.toString() === reviewId.toString();
+      return rev._id.toString() === reviewId.toString() && rev.user === userID;
     });
     if (isReviewExistIndex < 0) {
       return next(new ErrorHandler(400, "review doesn't exist"));
